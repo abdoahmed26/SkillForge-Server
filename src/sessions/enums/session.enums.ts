@@ -1,0 +1,8 @@
+export enum SessionStatus {
+  PENDING = 'PENDING',
+  SCHEDULED = 'SCHEDULED',
+  COMPLETED = 'COMPLETED',
+  MISSED = 'MISSED',
+  CANCELLED = 'CANCELLED',
+  REJECTED = 'REJECTED',
+}
