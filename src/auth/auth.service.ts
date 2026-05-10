@@ -216,6 +216,6 @@ export class AuthService {
       this.configService.get<string>('FRONTEND_URL') ?? 'http://localhost:5173'
     ).replace(/\/$/, '');
 
-    return `${frontendUrl}/reset-password?token=${encodeURIComponent(resetToken)}`;
+    return `${frontendUrl}/#/reset-password?token=${encodeURIComponent(resetToken)}`;
   }
 }
