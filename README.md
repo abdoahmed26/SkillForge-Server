@@ -1,6 +1,6 @@
 # SkillForge Server
 
-SkillForge Server is the NestJS backend for the SkillForge platform. It provides the REST API, realtime gateways, authentication, session scheduling, review workflows, analytics, and gamification services used by the React client.
+SkillForge Server is the NestJS backend for the SkillForge platform. It provides the REST API, realtime gateways, authentication, profile and upload workflows, skill discovery, smart matching, session scheduling, reviews, analytics, notifications, and gamification services used by the React client.
 
 This README is a developer guide for running and maintaining the backend application. For the product overview, use the root repository README.
 
@@ -30,7 +30,7 @@ This README is a developer guide for running and maintaining the backend applica
 | Events | EventEmitter2 |
 | API docs | Swagger / OpenAPI |
 | File uploads | Cloudinary |
-| Email | Nodemailer |
+| Email | Resend |
 | Scheduling | Nest Schedule |
 | Validation | class-validator, class-transformer |
 | Testing | Jest, Supertest |
@@ -44,7 +44,7 @@ Server/
     auth/             Login, registration, refresh, password reset, mail
     chat/             Conversations, messages, and chat gateway
     common/           Shared guards, decorators, filters, and utilities
-    config/           Environment and database configuration
+    config/           Environment, database, and upload configuration
     gamification/     Achievements, points, streaks, and realtime progress
     matching/         Match discovery, requests, scoring, and gateway
     migrations/       TypeORM database migrations
@@ -69,6 +69,7 @@ Create `Server/.env`:
 PORT=3000
 API_VERSION=api/v1
 NODE_ENV=development
+BACKEND_URL=http://localhost:3000
 FRONTEND_URL=http://localhost:5173
 
 DB_HOST=localhost
@@ -78,21 +79,15 @@ DB_PASSWORD=your_password
 DB_NAME=skillforge
 
 JWT_SECRET=change_me
-JWT_ACCESS_EXPIRY=15m
 JWT_REFRESH_SECRET=change_me_refresh
-JWT_REFRESH_EXPIRY=7d
 
 CLOUDINARY_NAME=your_cloud_name
 CLOUDINARY_API_KEY=your_api_key
 CLOUDINARY_API_SECRET=your_api_secret
 CLOUDINARY_FOLDER_NAME=skillforge
 
-MAIL_HOST=smtp.gmail.com
-MAIL_PORT=587
-MAIL_SECURE=false
-MAIL_USER=your_email@gmail.com
-MAIL_PASS=your_app_password
-MAIL_FROM="SkillForge <your_email@gmail.com>"
+MAIL_FROM="SkillForge <no-reply@example.com>"
+RESEND_API_KEY=your_resend_api_key
 ```
 
 Run database migrations:
@@ -119,7 +114,8 @@ http://localhost:3000/api/v1
 | --- | --- | --- |
 | `PORT` | Yes | HTTP server port. Defaults to `3000` when not provided. |
 | `API_VERSION` | Yes | Global REST prefix, usually `api/v1`. |
-| `NODE_ENV` | No | Runtime environment name. |
+| `NODE_ENV` | No | Runtime environment name. Production enables secure auth cookies. |
+| `BACKEND_URL` | Recommended | Public backend URL for links and deployment metadata. |
 | `FRONTEND_URL` | Yes | Client origin used for CORS and password reset links. |
 | `DB_HOST` | Yes | PostgreSQL host. |
 | `DB_PORT` | Yes | PostgreSQL port. |
@@ -127,21 +123,15 @@ http://localhost:3000/api/v1
 | `DB_PASSWORD` | Yes | PostgreSQL password. |
 | `DB_NAME` | Yes | PostgreSQL database name. |
 | `JWT_SECRET` | Yes | Access token signing secret. |
-| `JWT_ACCESS_EXPIRY` | Yes | Access token lifetime, for example `15m`. |
 | `JWT_REFRESH_SECRET` | Yes | Refresh token signing secret. |
-| `JWT_REFRESH_EXPIRY` | Yes | Refresh token lifetime, for example `7d`. |
 | `CLOUDINARY_NAME` | Yes | Cloudinary cloud name. |
 | `CLOUDINARY_API_KEY` | Yes | Cloudinary API key. |
 | `CLOUDINARY_API_SECRET` | Yes | Cloudinary API secret. |
 | `CLOUDINARY_FOLDER_NAME` | Yes | Folder used for uploaded SkillForge assets. |
-| `MAIL_HOST` | Yes | SMTP host used by Nodemailer. |
-| `MAIL_PORT` | Yes | SMTP port, usually `587` for TLS upgrade. |
-| `MAIL_SECURE` | Yes | Use `true` for implicit TLS, otherwise `false`. |
-| `MAIL_USER` | Yes | SMTP username. |
-| `MAIL_PASS` | Yes | SMTP password or provider app password. |
-| `MAIL_FROM` | Yes | Sender name and address for system emails. |
+| `MAIL_FROM` | Yes | Sender address used by Resend password reset emails. |
+| `RESEND_API_KEY` | Yes for email | Resend API key. Password reset email fails if this is missing. |
 
-`MAIL_USER` and `MAIL_PASS` are the preferred email variables. The mail service also supports `USER` and `PASS` as a local fallback, but new environments should use the explicit `MAIL_*` names.
+Do not commit real `.env` files or service credentials. Use placeholder values in documentation and issue comments.
 
 ## Available Scripts
 
@@ -157,6 +147,7 @@ http://localhost:3000/api/v1
 | `npm run test` | Run unit tests. |
 | `npm run test:watch` | Run unit tests in watch mode. |
 | `npm run test:cov` | Run unit tests with coverage. |
+| `npm run test:debug` | Run Jest with the Node debugger. |
 | `npm run test:e2e` | Run end-to-end tests with the e2e Jest config. |
 | `npm run generate` | Generate a new TypeORM migration from entity changes. |
 | `npm run migration` | Run pending TypeORM migrations. |
@@ -184,7 +175,11 @@ Revert the latest migration:
 npm run revert
 ```
 
+Current migrations cover the user foundation, skills, matching, sessions, gamification, realtime chat, notifications, reviews, attendance, and password reset fields.
+
 The backend is expected to run from migrations, not automatic schema synchronization. Keep entity changes and migrations together in the same change set.
+
+On startup, `main.ts` also seeds the skill catalog through `seedSkills(dataSource)`.
 
 ## API Documentation
 
@@ -213,7 +208,7 @@ REST endpoints are served under the configured API prefix. In local development,
 ### Password Reset
 
 - `POST /auth/forgot-password` accepts an email address.
-- The server creates a password reset token, stores a hashed version, and sends a reset link with Nodemailer.
+- The server creates a password reset token, stores a hashed version, and sends a reset link with Resend.
 - The reset link points to the client reset page using `FRONTEND_URL`.
 - `POST /auth/reset-password` accepts the token from the reset link and the new password.
 - Reset tokens expire after one hour and are cleared after successful use.
@@ -224,7 +219,11 @@ Profile and media uploads are stored through Cloudinary. Make sure all Cloudinar
 
 ### CORS and Cookies
 
-The backend expects the frontend origin to match `FRONTEND_URL`. The client sends authenticated API calls with credentials, so mismatched ports or protocols can break refresh-token behavior.
+The backend expects the frontend origin to match `FRONTEND_URL`. The client sends authenticated API calls with credentials, so mismatched ports or protocols can break cookie behavior.
+
+### Validation and Errors
+
+The application uses a global validation pipe with `whitelist`, `forbidNonWhitelisted`, and `transform` enabled. HTTP exceptions are normalized by the shared `HttpExceptionFilter`.
 
 ## Feature Modules
 
@@ -235,9 +234,9 @@ The backend expects the frontend origin to match `FRONTEND_URL`. The client send
 | `skills` | Skill catalog, user skills, skill levels, and learning goals. |
 | `matching` | Discovery, match requests, acceptance, rejection, compatibility, and realtime match updates. |
 | `sessions` | Availability, booking, session status, completion, and session realtime events. |
-| `chat` | Conversations, messages, read state, typing, and chat realtime events. |
-| `notifications` | Notification storage, delivery, read state, and realtime updates. |
-| `reviews` | Session reviews, ratings, and profile review visibility. |
+| `chat` | Conversations, messages, read state, typing, reactions, and chat realtime events. |
+| `notifications` | Notification storage, delivery, read state, cleanup, and realtime updates. |
+| `reviews` | Session reviews, ratings, anti-spam checks, and profile review visibility. |
 | `analytics` | User and platform metrics for dashboard views. |
 | `gamification` | Achievements, points, streaks, progress, and realtime gamification updates. |
 
@@ -249,7 +248,7 @@ The server exposes Socket.io gateways for realtime product flows:
 | --- | --- |
 | `/matching` | Match discovery, requests, and match lifecycle updates. |
 | `/sessions` | Session booking, reminders, status changes, and completion updates. |
-| `/chat` | Messages, typing indicators, read receipts, and conversation updates. |
+| `/chat` | Messages, typing indicators, read receipts, reactions, edits, deletes, and conversation updates. |
 | `/notifications` | User notifications and unread count changes. |
 | `/gamification` | Achievement unlocks, point changes, streak updates, and progress events. |
 
@@ -301,7 +300,7 @@ If you changed entities, generate and review a migration before running it:
 npm run generate
 ```
 
-### Login works but refresh fails
+### Login works but authenticated requests fail
 
 Check that:
 
@@ -309,16 +308,26 @@ Check that:
 - The client `VITE_API_URL` points to the same backend.
 - Requests are sent with credentials enabled.
 - The API prefix matches `API_VERSION`.
+- The access token is being attached as a Bearer token.
 
 ### Password reset emails do not arrive
 
 Check that:
 
-- `MAIL_HOST`, `MAIL_PORT`, `MAIL_SECURE`, `MAIL_USER`, `MAIL_PASS`, and `MAIL_FROM` are set.
-- Gmail accounts use an app password, not the normal account password.
+- `RESEND_API_KEY` and `MAIL_FROM` are set.
+- The Resend sender domain or sender address is verified.
 - `FRONTEND_URL` points to the running client.
 - The message is not in spam or blocked by the provider.
 
 ### Uploads fail
 
 Confirm `CLOUDINARY_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`, and `CLOUDINARY_FOLDER_NAME` are set and valid.
+
+### WebSocket events do not arrive
+
+Check that:
+
+- The client uses `VITE_SOCKET_URL` without `/api/v1`.
+- The user is authenticated before connecting to protected namespaces.
+- The backend JWT secret matches the token issuer.
+- The browser is not blocking the local Socket.io connection.
