@@ -38,15 +38,6 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('docs', app, document, {
     useGlobalPrefix: true,
-
-    customCssUrl:
-      'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.30.1/swagger-ui.min.css',
-
-    customJs: [
-      'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.30.1/swagger-ui-bundle.min.js',
-      'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.30.1/swagger-ui-standalone-preset.min.js',
-    ],
-
     swaggerOptions: {
       persistAuthorization: true,
     },
