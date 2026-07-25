@@ -6,7 +6,6 @@ import cookieParser from 'cookie-parser';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { DataSource } from 'typeorm';
 import { seedSkills } from './skills/skills.seed';
-import { apiReference } from '@scalar/nestjs-api-reference';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule,{
@@ -37,24 +36,7 @@ async function bootstrap() {
     .addBearerAuth()
     .build();
   const document = SwaggerModule.createDocument(app, config);
-  // SwaggerModule.setup('docs', app, document, {
-  //   useGlobalPrefix: true,
-  //   swaggerOptions: {
-  //     persistAuthorization: true,
-  //   },
-  // });
-  app.getHttpAdapter().get(`/${process.env.API_VERSION}/docs-json`, (_req, res) => {
-    res.json(document);
-  });
-
-  // Documentation UI
-  app.use(
-    `/${process.env.API_VERSION}/docs`,
-    apiReference({
-      content: document,
-      theme: 'purple',
-    }),
-  );
+  SwaggerModule.setup('docs', app, document);
 
   try {
     const dataSource = app.get(DataSource);
