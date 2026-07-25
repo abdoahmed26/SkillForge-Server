@@ -36,7 +36,21 @@ async function bootstrap() {
     .addBearerAuth()
     .build();
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document);
+  SwaggerModule.setup('docs', app, document, {
+    useGlobalPrefix: true,
+
+    customCssUrl:
+      'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.30.1/swagger-ui.min.css',
+
+    customJs: [
+      'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.30.1/swagger-ui-bundle.min.js',
+      'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.30.1/swagger-ui-standalone-preset.min.js',
+    ],
+
+    swaggerOptions: {
+      persistAuthorization: true,
+    },
+  });
 
   try {
     const dataSource = app.get(DataSource);
