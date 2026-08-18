@@ -3,7 +3,7 @@
 SkillForge Server is the NestJS backend for the SkillForge platform. It provides the REST API, realtime gateways, authentication, profile and upload workflows, skill discovery, smart matching, session scheduling, reviews, analytics, notifications, and gamification services used by the React client.
 
 
-## Contents
+## Contents 
 
 - [Technology Stack](#technology-stack)
 - [Application Structure](#application-structure)
